@@ -1,0 +1,27 @@
+@font-face {
+    font-family: "pingfang";
+    src: url('pingfang.ttf');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "pingfang_mem";
+    src: url('pingfang_mem.ttf');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "har_reg";
+    src: url('HarmonyOS_Sans_SC_Regular.ttf');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "har_bold";
+    src: url('HarmonyOS_Sans_SC_Bold.ttf');
+    font-weight: normal;
+    font-style: normal;
+}
