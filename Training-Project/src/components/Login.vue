@@ -107,7 +107,7 @@ export default defineComponent({
                 this.$router.replace('/');
             }
             else {
-                alert('用户名或密码不正确。');
+                alert('用户名或密码不正确。\n请检查你的用户名或密码。');
             }
         }
     }

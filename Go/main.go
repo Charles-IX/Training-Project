@@ -12,7 +12,7 @@ import (
 )
 
 type Q struct {
-	ID       string `json:"id"`
+	ID       int    `json:"id"`
 	Question string `json:"question"`
 	Type     string `json:"type"`
 	// 1：单选；2:判断；3：多选
@@ -34,7 +34,7 @@ func dbConn() (db *sql.DB) {
 	if err != nil {
 		panic(err.Error())
 	}
-	fmt.Println("成功连接到MySQL服务器。")
+	fmt.Println("成功连接到MySQL题目服务器。")
 	return db
 }
 
@@ -225,11 +225,11 @@ func UpdateQuestionsInDatabase(updatedQuestion Q) error {
 	// 连接数据库
 	db := dbConn()
 	defer db.Close() // 确保在函数结束时关闭数据库连接
-	// updatedQuestion.ID = int(updatedQuestion.ID)
-	// updatedQuestion.Type = int(updatedQuestion.Type)
-	// updatedQuestion.Chapter = int(updatedQuestion.Chapter)
-	// updatedQuestion.Key = int(updatedQuestion.Key)
-	// updatedQuestion.Times = int(updatedQuestion.Times)
+	updatedQuestion.ID = int(updatedQuestion.ID)
+	updatedQuestion.Type = string(updatedQuestion.Type)
+	updatedQuestion.Chapter = string(updatedQuestion.Chapter)
+	updatedQuestion.Key = string(updatedQuestion.Key)
+	updatedQuestion.Times = string(updatedQuestion.Times)
 
 	// 准备 SQL 更新语句
 	stmt, err := db.Prepare(`
@@ -260,6 +260,7 @@ func UpdateQuestionsInDatabase(updatedQuestion Q) error {
 	if err != nil {
 		return err
 	}
+	println("数据库已更新。")
 
 	return nil
 }
