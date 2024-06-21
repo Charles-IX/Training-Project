@@ -5,10 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+)
+
+var (
+	wrongTimes int  = 0
+	Terminate  bool = false
+	mu         sync.Mutex
 )
 
 type Q struct {
@@ -111,12 +118,15 @@ func GetRandomQuestions() ([]Q, error) {
 	var questions []Q
 	for selDB.Next() {
 		var q Q
-		err = selDB.Scan(&q.ID, &q.Question, &q.Type, &q.Chapter)
+		err = selDB.Scan(&q.ID, &q.Question, &q.Type, &q.Chapter, &q.Key, &q.Answer, &q.Times)
 		if err != nil {
 			return nil, err
 		}
 		questions = append(questions, q)
 	}
+	mu.Lock()
+	wrongTimes = 0
+	mu.Unlock()
 	return questions, nil
 }
 
@@ -138,6 +148,7 @@ type AnswerResponse struct {
 func HandleAnswer(w http.ResponseWriter, r *http.Request) {
 	var Expected_Key int
 	var payload AnswerPayload
+	Terminate = false
 	if r.Method != http.MethodPost {
 		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
 		return
@@ -155,12 +166,21 @@ func HandleAnswer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// 使用互斥锁保护对全局变量的访问
+	mu.Lock()
+	if wrongTimes > 10 {
+		wrongTimes = 0
+		Terminate = true
+	} else {
+		Terminate = false
+	}
+	mu.Unlock()
 
 	response := AnswerResponse{
 		ID:           payload.ID,
 		Correct:      Correct,
 		Expected_Key: Expected_Key,
-		Terminate:    false, // 这里依旧需要修改！
+		Terminate:    Terminate,
 	}
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
@@ -179,10 +199,18 @@ func checkAnswer(ID int, Key int) (bool, error, int) {
 
 	// 查询数据库中的正确答案
 	var Expected_Key int
-	err := db.QueryRow("SELECT Key FROM Questions WHERE ID = ?", ID).Scan(&Expected_Key)
+	err := db.QueryRow("SELECT `Key` FROM Questions WHERE ID = ?", ID).Scan(&Expected_Key)
 	if err != nil {
 		return false, err, Expected_Key
 	}
+
+	// 使用互斥锁保护对全局变量的访问
+	mu.Lock()
+	if Key != Expected_Key {
+		wrongTimes++
+		fmt.Println("已经在本次考试中做错", wrongTimes)
+	}
+	mu.Unlock()
 
 	return (Key == Expected_Key), nil, Expected_Key
 }
@@ -191,6 +219,24 @@ func HandleQuestions(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		fmt.Println("接收到GET请求……")
 		questions, err := GetAllQuestions()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		responseBytes, err := json.Marshal(questions)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(responseBytes)
+	}
+}
+
+func HandleRandomQuestions(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		fmt.Println("接收到GET请求……")
+		questions, err := GetRandomQuestions()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -260,7 +306,7 @@ func UpdateQuestionsInDatabase(updatedQuestion Q) error {
 	if err != nil {
 		return err
 	}
-	println("数据库已更新。")
+	fmt.Println("数据库已更新。")
 
 	return nil
 }
@@ -274,6 +320,7 @@ func main() {
 	r.HandleFunc("/questions", HandleQuestions).Methods("GET", "POST")
 	r.HandleFunc("/wrong", HandleWrongQuestions).Methods("GET")
 	r.HandleFunc("/response", HandleResponse).Methods("POST")
+	r.HandleFunc("/getRandomQuestions", HandleRandomQuestions).Methods("GET")
 	fmt.Println("Go 路由设置完毕。")
 
 	// 设置CORS

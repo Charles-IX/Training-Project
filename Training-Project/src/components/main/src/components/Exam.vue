@@ -1,238 +1,179 @@
 <template>
-    <div>
-        <a-table class="table" :columns="columns" :data-source="questionsData" row-key="id"
-            :pagination="{ pageSize: 10 }" :scroll="{ y: scrollY }" />
-        <!-- <a-modal title="题目详情" v-model:open="modalVisible" @ok="handleOk" @cancel="handleCancel"> -->
-        <a-modal class="m-modal" v-model:open="modalVisible" :closable="true" centered :destroyOnClose="true">
-            <template #title>
-                题目详情
-            </template>
-            <a-form style="margin-top: 20px;" autocomplete="off">
-                <a-form-item label="题目">
-                    <!-- <a-textarea v-model:value="sendData.Question" :defaultValue="sendData.Question"
-                        :autoSize="{ minRows: 2, maxRows: 5 }"></a-textarea> -->
-                        <p class="question">{{ sendData.Question }}</p>
-                </a-form-item>
-                <a-form-item label="类型">
-                    <!-- <a-radio-group v-model:value="sendData.Type" :autofocus="true" :disabled="true">
-                        <a-radio-button value='1'>单选题</a-radio-button>
-                        <a-radio-button value='2'>判断题</a-radio-button>
-                        <a-radio-button value='3'>多选题</a-radio-button>
-                    </a-radio-group> -->
-                    <h3 v-if="sendData.Type === '1'">单选题</h3>
-                    <h3 v-if="sendData.Type === '2'">判断题</h3>
-                    <h3 v-if="sendData.Type === '3'">多选题</h3>
-                </a-form-item>
-                <a-form-item label="所属章节">
-                    <!-- <a-input v-model:value="sendData.Chapter" :defaultValue="sendData.Chapter"></a-input> -->
-                    <h3>{{ sendData.Chapter }}</h3>
-                </a-form-item>
-                <a-form-item label="答案">
-                    <!-- <a-input v-model:value="sendData.Key" :defaultValue="sendData.Key"></a-input> -->
-                    <h3 v-if="sendData.Key === '1'">A</h3>
-                    <h3 v-if="sendData.Key === '2'">B</h3>
-                    <h3 v-if="sendData.Key === '3'">C</h3>
-                    <h3 v-if="sendData.Key === '4'">D</h3>
-                </a-form-item>
-                <a-form-item label="解析">
-                    <!-- <a-textarea v-model:value="sendData.Answer" :defaultValue="sendData.Answer"
-                        :autosize="{ minRows: 2, maxRows: 5 }"></a-textarea> -->
-                        <p>{{ sendData.Answer }}</p>
-                </a-form-item>
-                <a-form-item label="做错次数">
-                    <!-- <a-input v-model:value="sendData.Times" :defaultValue="sendData.Times"></a-input> -->
-                    <h3>{{ sendData.Times }}</h3>
-                </a-form-item>
-            </a-form>
-        </a-modal>
-    </div>
+  <div>
+    <div class="paragraph">每一套试卷包括 100 道题目，题型为判断题和单项选择题，每道题目 1 分，满分 100 分，试题随机来源于题库。</div>
+    <div class="paragraph">每一次试卷练习时间规定为 45 分钟，超时系统会自动交卷结束考试。答题过程中错 11 分（ 11 道题）即终止本场考试。</div>
+    <div class="paragraph">点击交卷后，系统会提供简单统计，比如得分，答对几道题，答错几道题，未答几道题，用时。</div>
+    <a-button type="primary" @click="showModal" style="margin-top: 20px;">开始考试</a-button>
+    <a-modal
+      v-model:open="open"
+      :closable="false"
+      :keyboard="false"
+      :footer="null"
+      :title="`剩余 ${formattedTime} - 题目 ${currentQuestionIndex + 1}/100`"
+      width="100%"
+      wrap-class-name="full-modal"
+      @ok="handleOk"
+    >
+      <div v-if="currentQuestion">
+        <div style="white-space: pre-wrap;">{{ currentQuestion.question }}</div>
+        <a-radio-group v-model:value="selectedAnswer" name="radioGroup">
+          <a-radio v-for="(option, index) in options" :key="index" :value="index + 1">{{ option }}</a-radio>
+        </a-radio-group>
+        <!-- <p v-if="answerStatus !== null">{{ answerStatus ? '回答正确' : '回答错误' }}</p> -->
+        <p v-if="answerStatus == true" style="color: green;">回答正确</p>
+        <p v-if="answerStatus == false" style="color: red;">回答错误</p>
+        <p v-if="notify == true" style="color: orange;">请选择答案</p>
+      </div>
+      <div style="margin-top: 20px;">
+        <a-button type="default" @click="handleExit">退出考试</a-button>
+        <a-button type="primary" @click="handleNext" style="margin-left: 10px;">下一题</a-button>
+      </div>
+    </a-modal>
+  </div>
 </template>
 
-<script>
-import { ref, onMounted, h } from 'vue';
+<script setup>
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
-import { Table, Modal, Button } from 'ant-design-vue';
-import { EyeOutlined } from '@ant-design/icons-vue';
-import Antd from 'ant-design-vue';
 
-export default {
-    components: {
-        'a-table': Table,
-        'a-modal': Modal,
-        'a-button': Button,
-        'EyeOutlined': EyeOutlined,
-    },
-    setup() {
-        const screenHeight = ref(window.innerHeight);
-        const scrollY = ref(`${screenHeight.value * 0.55}px`);
-
-        const updateTableHeight = () => {
-            screenHeight.value = window.innerHeight;
-            scrollY.value = `${screenHeight.value * 0.55}px`;
-        };
-        window.addEventListener('resize', updateTableHeight);
-
-        const questionsData = ref([]);
-        const questionTypes = {
-            1: '单选题',
-            2: '判断题',
-            3: '多选题',
-        };
-        const questionKeys = {
-            1: 'A',
-            2: 'B',
-            3: 'C',
-            4: 'D',
-        }
-        const modalVisible = ref(false);
-        const selectedQuestion = ref({});
-
-        const columns = [
-            {
-                title: '题号',
-                dataIndex: 'id',
-                key: 'id',
-                width: 50,
-            },
-            {
-                title: '题目',
-                dataIndex: 'question',
-                key: 'question',
-            },
-            {
-                title: '类型',
-                dataIndex: 'type',
-                key: 'type',
-                customRender: ({ text }) => {
-                    return questionTypes[text] || '未知题型';
-                },
-                width: 50,
-            },
-            {
-                title: '所属章节',
-                dataIndex: 'chapter',
-                key: 'chapter',
-                width: 40,
-            },
-            {
-                title: '答案',
-                dataIndex: 'key',
-                key: 'key',
-                customRender: ({ text }) => {
-                    return questionKeys[text] || '未知答案';
-                },
-                width: 30,
-            },
-            {
-                title: '解析',
-                dataIndex: 'answer',
-                key: 'answer',
-            },
-            {
-                title: '做错次数',
-                dataIndex: 'times',
-                key: 'times',
-                width: 50,
-            },
-            {
-                title: '操作',
-                width: 40,
-                key: 'action',
-
-                customRender: ({ record }) => {
-                    return h('a-button', {
-                        onClick: () => {
-                            console.log('Show button clicked', record);
-                            selectedQuestion.value = record;
-                            fillSendData();
-                            modalVisible.value = true;
-                        }
-                    }, [
-                        h(EyeOutlined)
-                    ]);
-                }
-            }
-        ];
-
-        const fillSendData = () => {
-            sendData.value.ID = selectedQuestion.value.id;
-            sendData.value.Question = selectedQuestion.value.question;
-            sendData.value.Type = selectedQuestion.value.type;
-            sendData.value.Chapter = selectedQuestion.value.chapter;
-            sendData.value.Key = selectedQuestion.value.key;
-            sendData.value.Answer = selectedQuestion.value.answer;
-            sendData.value.Times = selectedQuestion.value.times;
-        }
-
-        const sendData = ref({
-            ID: '',
-            Question: '',
-            Type: '',
-            Chapter: '',
-            Key: '',
-            Answer: '',
-            Times: '',
-        });
-
-        const fetchData = async () => {
-            try {
-                const response = await axios.get('http://localhost:8000/questions');
-                questionsData.value = response.data;
-            } catch (error) {
-                console.error('Error fetching data:', error);
-            }
-        };
-
-        const submitData = async () => {
-            try {
-                const response = await axios.post('http://localhost:8000/response', JSON.stringify(sendData.value));
-                console.log('Successfully submitted: ', response.data);
-            } catch (error) {
-                console.error('Failed to submit, ', error);
-            }
-        };
-
-        const handleOk = () => {
-            submitData();
-            modalVisible.value = false;
-        };
-
-        const handleCancel = () => {
-            modalVisible.value = false;
-        };
-
-        onMounted(() => {
-            fetchData();
-            updateTableHeight();
-        });
-
-        // onUnmounted(() => {
-        //     window.removeEventListener('resize', updateTableHeight);
-        // });
-
-        return {
-            scrollY,
-            questionsData,
-            columns,
-            selectedQuestion,
-            modalVisible,
-            handleOk,
-            handleCancel,
-            EyeOutlined,
-            fillSendData,
-            sendData,
-            submitData,
-        };
-    },
+const open = ref(false);
+const showModal = async () => {
+  open.value = true;
+  await fetchQuestions();
+  startCountdown();
 };
+
+const handleOk = () => {
+  open.value = false;
+  countdown.value = 45 * 60;
+  clearTimer();
+};
+
+const handleExit = () => {
+  open.value = false;
+  countdown.value = 45 * 60;
+  clearTimer();
+  window.location.reload();
+};
+
+const handleNext = async () => {
+  if (selectedAnswer.value == null){
+    notify.value = true;
+  }
+  else if (currentQuestionIndex.value <= 100) {
+    notify.value = false;
+    await submitAnswer();
+    // 等待3秒钟后再切换到下一题
+    setTimeout(() => {
+      currentQuestionIndex.value++;
+      answerStatus.value = null;
+      selectedAnswer.value = null; // 重置选择的答案
+    }, 1200);
+  } else {
+    alert('已经是最后一题');
+  }
+};
+
+const value = ref('1');
+const countdown = ref(45 * 60); // 45分钟，转换为秒
+let timer = null;
+
+const formattedTime = computed(() => {
+  const minutes = Math.floor(countdown.value / 60);
+  const seconds = countdown.value % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+});
+
+const formattedUsedTime = computed(() => {
+  const minutesUsed = Math.floor((45*60 - countdown.value) / 60);
+  const secondsUsed = (45*60 - countdown.value) % 60;
+  return `${minutesUsed.toString().padStart(2, '0')}:${secondsUsed.toString().padStart(2, '0')}`;
+});
+
+const startCountdown = () => {
+  if (timer) return;
+  timer = setInterval(() => {
+    if (countdown.value > 0) {
+      countdown.value--;
+    } else {
+      clearTimer();
+      alert('倒计时结束');
+      handleExit();
+    }
+  }, 1000);
+};
+
+const clearTimer = () => {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+};
+
+watch(open, (newVal) => {
+  if (newVal) {
+    startCountdown();
+  } else {
+    clearTimer();
+  }
+});
+
+onUnmounted(() => {
+  clearTimer();
+});
+
+const questions = ref([]);
+const currentQuestionIndex = ref(0);
+const currentQuestion = computed(() => questions.value[currentQuestionIndex.value] || {});
+const selectedAnswer = ref(null);
+const answerStatus = ref(null);
+const notify = ref(false);
+
+const fetchQuestions = async () => {
+  try {
+    const response = await axios.get('http://localhost:8000/getRandomQuestions');
+    questions.value = response.data;
+  } catch (error) {
+    console.error('Error fetching questions:', error);
+  }
+};
+
+const submitAnswer = async () => {
+  try {
+    const response = await axios.post('http://localhost:8000/answer', {
+      ID: currentQuestion.value.id,
+      Key: selectedAnswer.value
+    });
+
+    answerStatus.value = response.data.correct;
+    if (response.data.terminate) {
+      alert('已在本次考试中做错11题。\n考试终止，用时 ' + formattedUsedTime.value);
+      handleExit();
+    }
+  } catch (error) {
+    console.error('Error submitting answer:', error);
+  }
+};
+
+const options = ['A', 'B', 'C', 'D']; // Assuming these are the only options for simplicity
+
 </script>
 
-<style scoped>
-.table {
-    white-space: pre-wrap;
-    /* 保持空白符和换行 */
-}
-.question {
-    white-space: pre-wrap;
+<style lang="less">
+.full-modal {
+  .ant-modal {
+    max-width: 100%;
+    top: 0;
+    padding-bottom: 0;
+    margin: 0;
+  }
+  .ant-modal-content {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh);
+  }
+  .ant-modal-body {
+    flex: 1;
+  }
 }
 </style>
