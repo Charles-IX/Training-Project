@@ -5,17 +5,17 @@ const path = require('path')
 
 function createWindow () {
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1000,
+    height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      enableRemoteModule: true
+      // contextIsolation: true,
+      enableRemoteModule: true,
+      webSecurity: false,
     }
   })
 
-  // 加载你的 Vite+Vue 应用的 HTML 文件
-  mainWindow.loadFile('dist/index.html')
+  mainWindow.loadURL('http://localhost:5173/')
 }
 
 app.on('ready', createWindow)

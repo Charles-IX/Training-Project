@@ -28,6 +28,10 @@
           <LogoutOutlined />
           <span>{{ menuName[5] }}</span>
         </a-menu-item>
+        <a-menu-item key="6" @click="handleMenuClick" style="position: absolute; bottom: 0;">
+          <HomeOutlined />
+          <span>{{ menuName[6] }}</span>
+        </a-menu-item>
       </a-menu>
     </a-layout-sider>
     <!-- 右则导航页面 -->
@@ -63,16 +67,18 @@
 import { defineComponent, ref } from 'vue';
 import Welcome from './components/Welcome.vue';
 import Edit from './components/Edit.vue';
+import Exam from './components/Exam.vue';
 import History from './components/History.vue';
 import Show from './components/Show.vue';
 import Correction from './components/Correction.vue';
 import Logout from './components/Logout.vue';
-import {EditOutlined, HistoryOutlined, PieChartOutlined, BookOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, AppstoreTwoTone } from '@ant-design/icons-vue';
+import {EditOutlined, HistoryOutlined, PieChartOutlined, BookOutlined, LogoutOutlined, HomeOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue';
 export default defineComponent({
   name: 'App',
   components: {
     Welcome,
     Edit,
+    Exam,
     History,
     Show,
     Correction,
@@ -82,24 +88,28 @@ export default defineComponent({
     PieChartOutlined,
     BookOutlined,
     LogoutOutlined,
+    HomeOutlined,
     MenuFoldOutlined,
-    MenuUnfoldOutlined,
-    AppstoreTwoTone,
+    MenuUnfoldOutlined
   },
   setup() {
     const collapsed = ref(false);
     const selectedKeys = ref(['0']);
     const state = ref('user');
     const state_ch = ref('用户')
-    const menuName = ref(['C1小型汽车科目一模拟考试系统', '模拟考试', '历史成绩', '章节和专项练习', '错题本', '退出登录']);
+    const menuName = ref(['C1小型汽车科目一模拟考试系统', '模拟考试', '历史成绩', '章节和专项练习', '错题本', '退出登录', '回到主页']);
     const token = localStorage.getItem('token');
     
 
     if (token === 'admin_logged_in') {
       state.value = 'admin';
       state_ch.value = '管理员';
-      menuName.value = ['C1小型汽车科目一模拟考试系统', '题库管理', '退出登录'];
+      menuName.value = ['C1小型汽车科目一模拟考试系统', '题库管理', '退出登录','','','','回到主页'];
     }
+
+    const handleMenuClick = (e) => {
+      window.location.reload();
+    };
     
     return {
       collapsed,
@@ -107,6 +117,7 @@ export default defineComponent({
       menuName,
       state,
       state_ch,
+      handleMenuClick,
     }
   },
 })
