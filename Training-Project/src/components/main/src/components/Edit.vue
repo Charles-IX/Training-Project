@@ -1,5 +1,25 @@
 <template>
     <div>
+        <div style="display: flex; margin-inline: 5px; margin-top: 5px; margin-bottom: 5px;">
+            <a-button @click="openModal">
+                <PlusOutlined />
+                新增
+            </a-button>
+            <a-upload v-model:file-list="fileList" name="file" action="https://www.mocky.io/v2/5cc8019d300000980a055e76"
+                :headers="headers" @change="handleChange">
+                <a-button style="margin-left: 10px">
+                    <UploadOutlined />
+                    导入
+                </a-button>
+            </a-upload>
+            <a-button @click="exportData" style="margin-left: 10px;">
+                <DownloadOutlined />
+                导出
+            </a-button>
+            <a-input-search v-model:value="searchInput" :allowClear=true placeholder="搜索" enter-button
+                @search="onSearch" style="margin-left: 10px;" :loading="loading" />
+            <a-button :disabled="!searchStatus" @click="cancelSearch"><StopOutlined /></a-button>
+        </div>
         <a-table class="table" :columns="columns" :data-source="questionsData" row-key="id"
             :pagination="{ pageSize: 10 }" :scroll="{ y: scrollY }" />
         <!-- <a-modal title="题目详情" v-model:open="modalVisible" @ok="handleOk" @cancel="handleCancel"> -->
@@ -42,7 +62,7 @@
 import { ref, onMounted, h } from 'vue';
 import axios from 'axios';
 import { Table, Modal, Button } from 'ant-design-vue';
-import { EditOutlined } from '@ant-design/icons-vue';
+import { EditOutlined, UploadOutlined, DownloadOutlined, PlusOutlined, StopOutlined } from '@ant-design/icons-vue';
 import Antd from 'ant-design-vue';
 
 export default {
@@ -51,6 +71,42 @@ export default {
         'a-modal': Modal,
         'a-button': Button,
         'EditOutlined': EditOutlined,
+        'UploadOutlined': UploadOutlined,
+        'DownloadOutlined': DownloadOutlined,
+        'PlusOutlined': PlusOutlined,
+        'StopOutlined': StopOutlined,
+    },
+    methods: {
+        exportData() {
+            const dataToSave = this.questionsData; // 替换为您的实际数据
+            const fileName = 'C1模拟考试题库导出.json';
+            const jsonString = JSON.stringify(dataToSave, null, 2);
+
+            // 创建一个 Blob 对象并将 JSON 数据写入其中
+            const blob = new Blob([jsonString], { type: 'application/json' });
+
+            // 创建一个指向 Blob 对象的 URL
+            const url = URL.createObjectURL(blob);
+            // const url = 'http://localhost:8000/questions';
+
+            // 创建一个 a 标签并设置下载属性
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+
+            // 移除 a 标签并释放 URL 对象
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            // 可选：通知用户导出成功
+            this.$notify({ type: 'success', message: '文件已保存！' });
+        },
+        openModal() {
+            this.modalVisible = true;
+            this.sendData.ID = "";
+        }
     },
     setup() {
         const screenHeight = ref(window.innerHeight);
@@ -62,6 +118,28 @@ export default {
         };
         window.addEventListener('resize', updateTableHeight);
 
+        const loading = ref(false);
+        const searchInput = ref('');
+        const searchStatus = ref(false);
+        const onSearch = () => {
+            if (searchInput.value != '') {
+                loading.value = true;
+                searchStatus.value = true;
+                questionsData.value = originalQuestionsData.value.filter(item => item.question.includes(searchInput.value));
+                loading.value = false;
+            } else {
+                questionsData.value = originalQuestionsData.value;
+            }
+        }
+        const cancelSearch = () => {
+            searchInput.value = '';
+            questionsData.value = originalQuestionsData.value;
+            loading.value = false;
+            searchStatus.value = false
+        }
+
+
+        const originalQuestionsData = ref([]);
         const questionsData = ref([]);
         const questionTypes = {
             1: '单选题',
@@ -82,7 +160,7 @@ export default {
                 title: '题号',
                 dataIndex: 'id',
                 key: 'id',
-                width: 50,
+                width: 60,
             },
             {
                 title: '题目',
@@ -165,26 +243,32 @@ export default {
         });
 
         const fetchData = async () => {
+            loading.value = true;
             try {
                 const response = await axios.get('http://localhost:8000/questions');
                 questionsData.value = response.data;
+                originalQuestionsData.value = response.data; // 备份原始数据
             } catch (error) {
                 console.error('Error fetching data:', error);
+            }
+            finally {
+                loading.value = false;
             }
         };
 
         const submitData = async () => {
             try {
-                const response = await axios.post('http://localhost:8000/response', JSON.stringify(sendData.value));
+                const response = await axios.post('http://localhost:8000/response', sendData.value);
                 console.log('Successfully submitted: ', response.data);
             } catch (error) {
                 console.error('Failed to submit, ', error);
             }
         };
 
-        const handleOk = () => {
-            submitData();
+        const handleOk = async () => {
+            await submitData();
             modalVisible.value = false;
+            fetchData();
         };
 
         const handleCancel = () => {
@@ -209,9 +293,18 @@ export default {
             handleOk,
             handleCancel,
             EditOutlined,
+            UploadOutlined,
+            DownloadOutlined,
+            PlusOutlined,
+            StopOutlined,
             fillSendData,
             sendData,
             submitData,
+            searchInput,
+            searchStatus,
+            onSearch,
+            loading,
+            cancelSearch,
         };
     },
 };

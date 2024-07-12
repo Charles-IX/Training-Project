@@ -92,7 +92,7 @@ export default {
                 title: '题号',
                 dataIndex: 'id',
                 key: 'id',
-                width: 50,
+                width: 60,
             },
             {
                 title: '题目',

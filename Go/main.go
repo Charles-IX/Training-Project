@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -19,7 +20,7 @@ var (
 )
 
 type Q struct {
-	ID       int    `json:"id"`
+	ID       string `json:"id"`
 	Question string `json:"question"`
 	Type     string `json:"type"`
 	// 1：单选；2:判断；3：多选
@@ -50,6 +51,28 @@ func GetAllQuestions() ([]Q, error) {
 	defer db.Close()
 
 	selDB, err := db.Query("SELECT * FROM Questions")
+	if err != nil {
+		return nil, err
+	}
+	defer selDB.Close()
+
+	var questions []Q
+	for selDB.Next() {
+		var q Q
+		err = selDB.Scan(&q.ID, &q.Question, &q.Type, &q.Chapter, &q.Key, &q.Answer, &q.Times)
+		if err != nil {
+			return nil, err
+		}
+		questions = append(questions, q)
+	}
+	return questions, nil
+}
+
+func GetAllExams() ([]Q, error) {
+	db := dbConn()
+	defer db.Close()
+
+	selDB, err := db.Query("SELECT * FROM Exams")
 	if err != nil {
 		return nil, err
 	}
@@ -132,16 +155,16 @@ func GetRandomQuestions() ([]Q, error) {
 
 // AnswerPayload 结构用于解析前端发送的请求体
 type AnswerPayload struct {
-	ID  int `json:"id"`
-	Key int `json:"key"`
+	ID  string `json:"id"`
+	Key int    `json:"key"`
 }
 
 // AnswerResponse 结构用于向前端发送响应
 type AnswerResponse struct {
-	ID           int  `json:"id"`
-	Correct      bool `json:"correct"`
-	Expected_Key int  `json:"expected_key"`
-	Terminate    bool `json:"terminate"`
+	ID           string `json:"id"`
+	Correct      bool   `json:"correct"`
+	Expected_Key int    `json:"expected_key"`
+	Terminate    bool   `json:"terminate"`
 }
 
 // HandleAnswer 接受答案，并构建响应
@@ -193,7 +216,7 @@ func HandleAnswer(w http.ResponseWriter, r *http.Request) {
 }
 
 // checkAnswer 根据问题ID在数据库中检索正确答案，并与用户提交的答案进行比对检查其是否正确
-func checkAnswer(ID int, Key int) (bool, error, int) {
+func checkAnswer(ID string, Key int) (bool, error, int) {
 	db := dbConn()
 	defer db.Close()
 
@@ -251,50 +274,93 @@ func HandleRandomQuestions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// 获取数据库中的最大 ID
+func GetMaxIDFromDatabase() int {
+	db := dbConn()
+	defer db.Close()
+	var maxID int
+	err := db.QueryRow("SELECT COALESCE(MAX(ID), 0) FROM Questions").Scan(&maxID)
+	if err != nil {
+		fmt.Println("查询数据库失败:", err)
+		return 0
+	}
+	fmt.Println("当前数据库中共有题目" + strconv.Itoa(maxID))
+	return maxID
+}
+
 func HandleResponse(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("接收到POST请求……")
 	var updatedQuestion Q
-
+	var add bool = false
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&updatedQuestion); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if updatedQuestion.ID == "" {
+		add = true
+		maxID := GetMaxIDFromDatabase()
+		fmt.Println("从数据库中获取的最大 ID 为", maxID)
+		newID := maxID + 1
+		updatedQuestion.ID = strconv.Itoa(newID)
+		fmt.Println("新增题目，题号为" + strconv.Itoa(newID))
+	}
 	fmt.Println("json解码完成。")
-	UpdateQuestionsInDatabase(updatedQuestion)
-	fmt.Println("数据库已更新。")
+	UpdateQuestionsInDatabase(updatedQuestion, add)
 	w.WriteHeader(http.StatusNoContent)
 	fmt.Println("返回HTTP-204。")
 }
 
-func UpdateQuestionsInDatabase(updatedQuestion Q) error {
+func UpdateQuestionsInDatabase(updatedQuestion Q, add bool) error {
 	// 连接数据库
 	db := dbConn()
 	defer db.Close() // 确保在函数结束时关闭数据库连接
-	updatedQuestion.ID = int(updatedQuestion.ID)
+	var stmt *sql.Stmt
+	var err error
+	updatedQuestion.ID = string(updatedQuestion.ID)
 	updatedQuestion.Type = string(updatedQuestion.Type)
 	updatedQuestion.Chapter = string(updatedQuestion.Chapter)
 	updatedQuestion.Key = string(updatedQuestion.Key)
 	updatedQuestion.Times = string(updatedQuestion.Times)
-
-	// 准备 SQL 更新语句
-	stmt, err := db.Prepare(`
-        UPDATE Questions SET
-            Question = ?,
-            Type = ?,
-            Chapter = ?,
-            Key = ?,
-            Answer = ?,
-            Times = ?
-        WHERE ID = ?
-    `)
-	if err != nil {
-		return err
+	if add {
+		stmt, err = db.Prepare(
+			"INSERT INTO Questions (Question, Type, Chapter, `Key`, Answer, Times, ID) VALUES (?, ?, ?, ?, ?, ?, ?)")
+		if err != nil {
+			fmt.Println("SQL准备阶段出错: ", err)
+			return err
+		}
+		defer stmt.Close()
+	} else if updatedQuestion.Question == "" {
+		stmt, err = db.Prepare(
+			"DELETE FROM Questions WHERE ID = ?")
+		if err != nil {
+			fmt.Println("SQL准备阶段出错: ", err)
+			return err
+		}
+		defer stmt.Close()
+		stmt.Exec(
+			updatedQuestion.ID)
+		fmt.Println("已删除题目，题号为", updatedQuestion.ID)
+		return nil
+	} else {
+		// 准备 SQL 更新语句
+		stmt, err = db.Prepare(
+			"UPDATE Questions SET " +
+				"Question = ?, " +
+				"Type = ?, " +
+				"Chapter = ?, " +
+				"`Key` = ?, " +
+				"Answer = ?, " +
+				"Times = ? " +
+				"WHERE ID = ?")
+		if err != nil {
+			fmt.Println("SQL准备阶段出错: ", err)
+			return err
+		}
+		defer stmt.Close() // 确保在函数结束时关闭 statement
 	}
-	defer stmt.Close() // 确保在函数结束时关闭 statement
-
 	// 执行 SQL 语句，传入需要更新的值
-	_, err = stmt.Exec(
+	res, err := stmt.Exec(
 		updatedQuestion.Question,
 		updatedQuestion.Type,
 		updatedQuestion.Chapter,
@@ -303,10 +369,23 @@ func UpdateQuestionsInDatabase(updatedQuestion Q) error {
 		updatedQuestion.Times,
 		updatedQuestion.ID,
 	)
+	fmt.Println(updatedQuestion.Question)
 	if err != nil {
+		fmt.Println("SQL执行失败: ", err)
 		return err
 	}
-	fmt.Println("数据库已更新。")
+	// 检查影响的行数
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		fmt.Println("获取影响行数失败:", err)
+		return err
+	}
+	if rowsAffected == 0 {
+		fmt.Println("没有记录被更新。")
+	} else {
+		fmt.Println("数据库已更新，影响行数:", rowsAffected)
+	}
+	fmt.Println("数据库更新函数执行完毕。")
 
 	return nil
 }
